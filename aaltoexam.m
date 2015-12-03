@@ -101,7 +101,27 @@ classdef aaltoexam < handle
   
         end
         
-        function add_exam(self,oodifile)
+        function list_halls(self)
+           seats1 = cellfun(@(x) sum(sum(ceil(x.sectors(1:2:end,:)/x.nth))), self.halls);
+           seats2 = cellfun(@(x) sum(sum(ceil(x.sectors(2:2:end,:)/x.nth))), self.halls);
+           
+           firstrow = cellfun(@(x) x.rows{1}.id, self.halls);
+           if firstrow == '1'
+               firstodd = true;
+           else
+               firstodd = false;
+           end
+           
+           for itr = 1:length(self.halls)
+               disp(['Hall ' self.halls{itr}.name ', students sit on every ' num2str(self.halls{itr}.nth) 'th seat'])
+               disp(['Total: ' num2str(seats1(itr)+seats2(itr)) ' seats'])
+               disp(['Odd: ' num2str(firstodd*seats1(itr)+~firstodd*seats2(itr))])
+               disp(['Even: ' num2str(~firstodd*seats1(itr)+firstodd*seats2(itr))])
+               fprintf('\n')
+           end
+        end
+        
+        function add_exam(self,oodifile,nAttending)
             self.exams{end+1}=struct;
             [~,header]=system(['head ' oodifile]);
             name=strsplit(header,{'<ns1:opinkohtnim>','</ns1:opinkohtnim>'});
@@ -110,6 +130,13 @@ classdef aaltoexam < handle
             code=code{2};
             self.exams{end}.name=[code ' ' name];
             self.exams{end}.oodifile=oodifile;
+            
+            % -1 = Take all students from the list
+            if nargin < 3
+                nAttending = -1;
+            end
+            
+            self.read_students(length(self.exams),nAttending)
         end
         
         function viz(self)
@@ -148,7 +175,8 @@ classdef aaltoexam < handle
         function print(self)
             disp('-----------------------------------------------');
             for itr=1:length(self.exams)
-                disp(['Exam: ',self.exams{itr}.name]);
+                %disp(['Exam: ',self.exams{itr}.name]);
+                disp(self.exams{itr}.name);
                 for jtr=1:length(self.halls)
                     foundinhall=0;
                     minname='Zzz';
@@ -160,12 +188,12 @@ classdef aaltoexam < handle
                                 try
                                     name1=sort({minname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:3)});
                                 catch
-                                    name1=sort({minname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:2)});
+                                    name1=[sort({minname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:2)}) 'a'];
                                 end
                                 try
                                     name2=sort({maxname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:3)});
                                 catch
-                                    name2=sort({maxname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:2)});
+                                    name2=[sort({maxname,self.halls{jtr}.rows{ktr}.students{ltr}.lastname(1:2)}) 'a'];
                                 end
                                 minname=name1{1};
                                 maxname=name2{2};
@@ -196,7 +224,7 @@ classdef aaltoexam < handle
         end
         
         function arrange_in_halls(self,halls)
-            self.read_students();
+%            self.read_students();
             hallids=[];
             for itr=1:length(self.halls)
                 for jtr=1:length(halls)
@@ -217,11 +245,11 @@ classdef aaltoexam < handle
             end
         end
         
-        function read_students(self)
-            for itr=1:length(self.exams)
-                self.exams{itr}.students={};
+        function read_students(self,index,nAttending)
+            %for itr=1:length(self.exams)
+                self.exams{index}.students={};
                 % read Oodi xml file
-                tree=xmlread(self.exams{itr}.oodifile);
+                tree=xmlread(self.exams{index}.oodifile);
                 attendees=tree.getChildNodes.item(0).getChildNodes.item(1).getChildNodes.item(20).getChildNodes;
                 N=attendees.getLength;
                 % loop over students
@@ -229,8 +257,12 @@ classdef aaltoexam < handle
                     student=struct;
                     student.lastname=char(attendees.item(jtr).getChildNodes.item(1).getChildNodes.item(0).getData);
                     student.id=char(attendees.item(jtr).getChildNodes.item(5).getChildNodes.item(0).getData);
-                    self.exams{itr}.students{end+1}=student;
+                    self.exams{index}.students{end+1}=student;
                 end
+            %end
+            if nAttending > 0 && nAttending < length(self.exams{index}.students)
+                inds = round(linspace(1,length(self.exams{index}.students),nAttending));
+                self.exams{index}.students = self.exams{index}.students(inds);
             end
         end
         
