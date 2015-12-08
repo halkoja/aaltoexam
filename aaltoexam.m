@@ -309,17 +309,19 @@ classdef aaltoexam < handle
                 rfile = fileread(self.exams{index}.oodifile);
                 studs = regexp(rfile,rexp,'tokens');
                 
-                self.exams{index}.students = cell(1,length(studs));
-                
-                %stud2struct = cell(2,length(studs));
                 stud2struct = reshape([studs{:}],2,length(studs));
                 [~,ind] = unique(stud2struct(1,:));
                 stud2struct = stud2struct(:,ind);
                 
+                [~,ind] = sort(stud2struct(2,:));
+                stud2struct = stud2struct(:,ind);
+                
                 studstruct = cell2struct(stud2struct,{'id','lastname'},1);
                 
+                self.exams{index}.students = cell(1,length(ind));
+                
                 % Cell array of structs not gud, do for lup
-                for itr=1:length(studs)
+                for itr=1:length(ind)
                     self.exams{index}.students{itr} = studstruct(itr);
                 end
                 
