@@ -313,6 +313,8 @@ classdef aaltoexam < handle
                 
                 %stud2struct = cell(2,length(studs));
                 stud2struct = reshape([studs{:}],2,length(studs));
+                [~,ind] = unique(stud2struct(1,:));
+                stud2struct = stud2struct(:,ind);
                 
                 studstruct = cell2struct(stud2struct,{'id','lastname'},1);
                 
