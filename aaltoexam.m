@@ -113,7 +113,7 @@ classdef aaltoexam < handle
                 else
                     firstodd = false;
                 end
-                disp(['Hall ' self.halls{itr}.name ', students sit on every ' num2str(self.halls{itr}.nth) 'th seat'])
+                disp(['Hall ' self.halls{itr}.name ', students sit on every ' num2str(self.halls{itr}.nth) ' seats'])
                 disp(['Total: ' num2str(seats1(itr)+seats2(itr)) ' seats'])
                 disp(['Odd: ' num2str(firstodd*seats1(itr)+~firstodd*seats2(itr))])
                 disp(['Even: ' num2str(~firstodd*seats1(itr)+firstodd*seats2(itr))])
@@ -121,13 +121,43 @@ classdef aaltoexam < handle
             end
         end
         
+        function list_exams(self)
+            for itr = 1:length(self.exams)
+                disp(self.exams{itr}.name)
+                disp(['File: ' self.exams{itr}.oodifile])
+                disp(['Attending: ' num2str(length(self.exams{itr}.students))])
+                fprintf('\n')
+            end
+        end
+        
         function add_exam(self,oodifile,nAttending)
             self.exams{end+1}=struct;
-            [~,header]=system(['head ' oodifile]);
-            name=strsplit(header,{'<ns1:opinkohtnim>','</ns1:opinkohtnim>'});
-            name=name{2};
-            code=strsplit(header,{'<ns1:opinkohttunn>','</ns1:opinkohttunn>'});
-            code=code{2};
+            
+            if iscell(oodifile)
+                disp(['Using default with ' num2str(nAttending) ' attendants'])
+                code = oodifile{1};
+                name = oodifile{2};
+                oodifile = which('default.txt');
+            else
+                
+                [~,header]=system(['head -n50 ' oodifile]);
+                
+                fext = strsplit(oodifile,'.');
+                if ~strcmp(fext{end},'xml')
+                    rexp = 'Opintokohde\s+(\S+)\s+([^\n]*)\n';
+                    rname = regexp(header,rexp,'tokens');
+                    rname = rname{1};
+                    name = strsplit(rname{2},{'Opintokohde','Kurssi','Tentti','\t',' '});
+                    name = strjoin({name{2:end-1}});
+                    code = rname{1};
+                else
+                    
+                    name=strsplit(header,{'<ns1:opinkohtnim>','</ns1:opinkohtnim>'});
+                    name=name{2};
+                    code=strsplit(header,{'<ns1:opinkohttunn>','</ns1:opinkohttunn>'});
+                    code=code{2};
+                end
+            end
             self.exams{end}.name=[code ' ' name];
             self.exams{end}.oodifile=oodifile;
             
@@ -147,7 +177,7 @@ classdef aaltoexam < handle
                     continue
                 end
                 disp('-----------------------------------------------');
-                disp(['Hall ',self.halls{itr}.name]);
+                disp(['Hall ',self.halls{itr}.name  ' (student on every ' num2str(self.halls{itr}.nth) ' seats)']);
                 disp(['Total number of assigned students: ',num2str(scount)]);
                 hallviz='';
                 exams=containers.Map;
@@ -175,8 +205,10 @@ classdef aaltoexam < handle
         function print(self)
             disp('-----------------------------------------------');
             for itr=1:length(self.exams)
-                %disp(['Exam: ',self.exams{itr}.name]);
                 disp(self.exams{itr}.name);
+                nthhall=0;
+                prevmax='NOTHING';
+                printstr='';
                 for jtr=1:length(self.halls)
                     foundinhall=0;
                     minname='Zzz';
@@ -201,10 +233,34 @@ classdef aaltoexam < handle
                         end
                     end
                     if foundinhall
-                        disp([self.halls{jtr}.name ' ' minname '-' maxname]);
+                        if nthhall==0
+                            minname='Aaa';
+                        end
+                        if ~strcmp(prevmax,'NOTHING')
+                            % continuous naming
+                            minname=prevmax;
+                            if double(minname(end)) < 122
+                                minname(end)=char(minname(end)+1);
+                            else
+                                if double(minname(2)) < 122
+                                    minname(2) = char(minname(2)+1);
+                                    minname(end) = 'a';
+                                else
+                                    minname(1) = char(minname(1)+1);
+                                    minname(2:end)= 'aa';
+                                end
+                            end
+                            
+                        end
+                        prevmax=maxname;
+                        nthhall=nthhall+1;
+                        printstr=[printstr self.halls{jtr}.name ' ' minname '-' maxname sprintf('\n')];
                     end
                 end
-                disp(' ');
+                if length(printstr)>4
+                    printstr((end-3):end)=sprintf('Ööö\n');
+                    disp(printstr);
+                end
             end
         end
         
@@ -246,17 +302,43 @@ classdef aaltoexam < handle
         
         function read_students(self,index,nAttending)
             self.exams{index}.students={};
-            % read Oodi xml file
-            tree=xmlread(self.exams{index}.oodifile);
-            attendees=tree.getChildNodes.item(0).getChildNodes.item(1).getChildNodes.item(20).getChildNodes;
-            N=attendees.getLength;
-            % loop over students
-            for jtr=1:2:N
-                student=struct;
-                student.lastname=char(attendees.item(jtr).getChildNodes.item(1).getChildNodes.item(0).getData);
-                student.id=char(attendees.item(jtr).getChildNodes.item(5).getChildNodes.item(0).getData);
-                self.exams{index}.students{end+1}=student;
+            
+            fext = strsplit(self.exams{index}.oodifile,'.');
+            if ~strcmpi(fext{end},'xml')
+                rexp = '([1-9k][0-9]{4}[0-9A-Z])\s+(\S*)\s';
+                rfile = fileread(self.exams{index}.oodifile);
+                studs = regexp(rfile,rexp,'tokens');
+                
+                self.exams{index}.students = cell(1,length(studs));
+                
+                %stud2struct = cell(2,length(studs));
+                stud2struct = reshape([studs{:}],2,length(studs));
+                
+                studstruct = cell2struct(stud2struct,{'id','lastname'},1);
+                
+                % Cell array of structs not gud, do for lup
+                for itr=1:length(studs)
+                    self.exams{index}.students{itr} = studstruct(itr);
+                end
+                
+            else
+                
+                % read Oodi xml file
+                tree=xmlread(self.exams{index}.oodifile);
+                attendees=tree.getChildNodes.item(0).getChildNodes.item(1).getChildNodes.item(20).getChildNodes;
+                N=attendees.getLength;
+                % loop over students
+                for jtr=1:2:N
+                    student=struct;
+                    student.lastname=char(attendees.item(jtr).getChildNodes.item(1).getChildNodes.item(0).getData);
+                    student.id=char(attendees.item(jtr).getChildNodes.item(5).getChildNodes.item(0).getData);
+                    self.exams{index}.students{end+1}=student;
+                end
+                
             end
+            
+            % generate list of attendees here (?)
+            
             if nAttending > 0 && nAttending < length(self.exams{index}.students)
                 inds = round(linspace(1,length(self.exams{index}.students),nAttending));
                 self.exams{index}.students = self.exams{index}.students(inds);
